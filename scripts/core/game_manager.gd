@@ -11,6 +11,7 @@ enum GameState { MENU, CHARACTER_SELECT, FIGHTING, ROUND_END, MATCH_END, PAUSED 
 
 const ROUNDS_TO_WIN := 2
 const ROUND_TIME := 90.0
+const SAVE_PATH := "user://save.cfg"
 
 var current_state: GameState = GameState.MENU
 var round_number := 0
@@ -24,6 +25,14 @@ var fighters: Array[Fighter] = []
 var input_manager: InputManager = null
 var don_unlocked: bool = false
 var current_mode: String = "versus"
+
+var arcade: ArcadeManager = ArcadeManager.new()
+var victory_mode: String = ""
+var victory_winner: String = ""
+
+
+func _ready() -> void:
+	_load_unlock()
 
 
 func start_match() -> void:
@@ -89,3 +98,34 @@ func broadcast_round_reset() -> void:
 
 func unlock_don() -> void:
 	don_unlocked = true
+	_save_unlock()
+
+
+func start_arcade_mode(queen_name: String) -> void:
+	current_mode = "arcade"
+	arcade.start(queen_name)
+	p1_character = queen_name
+	p2_character = arcade.get_current_opponent()
+
+
+func arcade_advance() -> void:
+	arcade.advance()
+	if arcade.is_complete():
+		unlock_don()
+		victory_mode = "arcade_complete"
+		victory_winner = p1_character
+	else:
+		p2_character = arcade.get_current_opponent()
+
+
+func _save_unlock() -> void:
+	var config := ConfigFile.new()
+	config.set_value("progress", "don_unlocked", don_unlocked)
+	config.save(SAVE_PATH)
+
+
+func _load_unlock() -> void:
+	var config := ConfigFile.new()
+	var err := config.load(SAVE_PATH)
+	if err == OK:
+		don_unlocked = config.get_value("progress", "don_unlocked", false)
