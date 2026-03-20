@@ -6,6 +6,8 @@ extends CharacterBody2D
 signal health_changed(new_health: float)
 signal special_meter_changed(new_value: float)
 signal defeated()
+signal damage_dealt(amount: float)
+signal special_used()
 
 @export var fighter_name: String = "Fighter"
 @export var max_health: float = 100.0
@@ -98,14 +100,16 @@ func handle_input(prefix: String) -> void:
 
 func attack(type: String, damage: float) -> void:
 	is_attacking = true
+	on_damage_dealt(damage)
+	on_hit_landed()
 	if anim_player:
 		anim_player.play(type)
 		await anim_player.animation_finished
 	is_attacking = false
 
 
-func take_damage(amount: float) -> void:
-	if is_blocking:
+func take_damage(amount: float, unblockable: bool = false) -> void:
+	if is_blocking and not unblockable:
 		amount *= 0.2  # Block reduces damage by 80%
 
 	health -= amount
@@ -118,6 +122,25 @@ func take_damage(amount: float) -> void:
 
 	if health <= 0:
 		defeated.emit()
+
+
+func get_knockback_modifier() -> float:
+	return 100.0 / max_health
+
+
+func apply_knockback(direction: float, force: float) -> void:
+	var kb = force * get_knockback_modifier()
+	velocity.x += direction * kb
+
+
+func on_damage_dealt(amount: float) -> void:
+	special_meter = min(special_meter + amount * 0.4, 100.0)
+	special_meter_changed.emit(special_meter)
+	damage_dealt.emit(amount)
+
+
+func on_hit_landed() -> void:
+	pass
 
 
 func get_catchphrase() -> String:
