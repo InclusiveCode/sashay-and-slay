@@ -5,6 +5,7 @@ extends Node
 signal round_started(round_number: int)
 signal round_ended(winner: String)
 signal match_ended(winner: String)
+signal round_reset()
 
 enum GameState { MENU, CHARACTER_SELECT, FIGHTING, ROUND_END, MATCH_END, PAUSED }
 
@@ -18,6 +19,11 @@ var p2_wins := 0
 var p1_character: String = ""
 var p2_character: String = ""
 var time_remaining := ROUND_TIME
+
+var fighters: Array[Fighter] = []
+var input_manager: InputManager = null
+var don_unlocked: bool = false
+var current_mode: String = "versus"
 
 
 func start_match() -> void:
@@ -61,3 +67,25 @@ func reset_to_menu() -> void:
 	current_state = GameState.MENU
 	p1_character = ""
 	p2_character = ""
+
+
+func register_fighter(fighter: Fighter) -> void:
+	fighters.append(fighter)
+	fighter.input_manager = input_manager
+
+
+func setup_input_manager() -> void:
+	input_manager = InputManager.new()
+	add_child(input_manager)
+	for fighter in fighters:
+		fighter.input_manager = input_manager
+
+
+func broadcast_round_reset() -> void:
+	for fighter in fighters:
+		fighter.reset_round_state()
+	round_reset.emit()
+
+
+func unlock_don() -> void:
+	don_unlocked = true
