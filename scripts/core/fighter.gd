@@ -30,6 +30,9 @@ var gravity: float = 980.0
 var _stat_reduction_count: int = 0
 var _temp_speed_modifier: float = 1.0
 
+# Input manager (set externally, e.g., by GameManager)
+var input_manager: InputManager = null
+
 @onready var anim_player: AnimationPlayer = $AnimationPlayer if has_node("AnimationPlayer") else null
 @onready var hitbox: Area2D = $Hitbox if has_node("Hitbox") else null
 @onready var hurtbox: Area2D = $Hurtbox if has_node("Hurtbox") else null
@@ -73,10 +76,21 @@ func reset_round_state() -> void:
 	_temp_speed_modifier = 1.0
 
 
+func _is_action_banned(action: String) -> bool:
+	return input_manager != null and input_manager.is_input_banned(action)
+
+
+func _get_remapped(action: String) -> String:
+	if input_manager != null:
+		return input_manager.get_remapped_action(action, true)
+	return action
+
+
 func handle_input(prefix: String) -> void:
 	if is_attacking:
 		return
 
+	# Movement — never banned by silence
 	var direction := Input.get_axis(prefix + "left", prefix + "right")
 	velocity.x = direction * get_effective_speed()
 
@@ -86,13 +100,23 @@ func handle_input(prefix: String) -> void:
 	if Input.is_action_just_pressed(prefix + "up") and is_on_floor():
 		velocity.y = jump_force
 
-	is_blocking = Input.is_action_pressed(prefix + "down") and is_on_floor()
+	# Blocking (down) — can be banned
+	if not _is_action_banned(prefix + "down"):
+		is_blocking = Input.is_action_pressed(prefix + "down") and is_on_floor()
+	else:
+		is_blocking = false
 
-	if Input.is_action_just_pressed(prefix + "punch"):
+	# Punch — check ban, apply remap
+	var punch_action := _get_remapped(prefix + "punch")
+	if not _is_action_banned(prefix + "punch") and Input.is_action_just_pressed(punch_action):
 		attack("punch", get_effective_punch())
-	elif Input.is_action_just_pressed(prefix + "kick"):
-		attack("kick", get_effective_kick())
-	elif Input.is_action_just_pressed(prefix + "special") and special_meter >= 100.0:
+	# Kick — check ban, apply remap
+	elif not _is_action_banned(prefix + "kick"):
+		var kick_action := _get_remapped(prefix + "kick")
+		if Input.is_action_just_pressed(kick_action):
+			attack("kick", get_effective_kick())
+	# Special — check ban
+	if not _is_action_banned(prefix + "special") and Input.is_action_just_pressed(prefix + "special") and special_meter >= 100.0:
 		attack("special", special_damage)
 		special_meter = 0.0
 		special_meter_changed.emit(special_meter)
