@@ -274,5 +274,30 @@ func _clamp_to_arena() -> void:
 		position.x = ARENA_RIGHT
 
 
+# --- Projectile / zone spawning ---
+
+func spawn_projectile(proj_damage: float, proj_speed: float = 400.0, is_unblockable: bool = false) -> Projectile:
+	var proj := Projectile.new()
+	proj.damage = proj_damage
+	proj.speed = proj_speed
+	proj.unblockable = is_unblockable
+	proj.direction = 1.0 if facing_right else -1.0
+	proj.owner_fighter = self
+	proj.position = global_position
+	get_tree().current_scene.add_child(proj)
+	return proj
+
+
+func spawn_burning_zone(zone_damage: float, zone_duration: float, zone_width: float = 100.0) -> BurningZone:
+	var zone := BurningZone.new()
+	zone.damage_per_second = zone_damage
+	zone.duration = zone_duration
+	zone.zone_width = zone_width
+	zone.owner_fighter = self
+	zone.position = global_position
+	get_tree().current_scene.add_child(zone)
+	return zone
+
+
 func get_catchphrase() -> String:
 	return "..."
