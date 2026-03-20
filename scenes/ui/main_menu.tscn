@@ -43,9 +43,13 @@ horizontal_alignment = 1
 layout_mode = 2
 custom_minimum_size = Vector2(0, 40)
 
-[node name="FightButton" type="Button" parent="VBoxContainer"]
+[node name="VersusButton" type="Button" parent="VBoxContainer"]
 layout_mode = 2
-text = "FIGHT!"
+text = "VERSUS"
+
+[node name="ArcadeButton" type="Button" parent="VBoxContainer"]
+layout_mode = 2
+text = "ARCADE"
 
 [node name="QuitButton" type="Button" parent="VBoxContainer"]
 layout_mode = 2
