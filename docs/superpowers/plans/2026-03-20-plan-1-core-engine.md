@@ -160,11 +160,30 @@ func get_effective_kick() -> float:
 func get_effective_speed() -> float:
 	return speed * get_stat_modifier()
 
+## Temporary effect system — for roots, slows, stuns
+var _temp_speed_modifier: float = 1.0  # Multiplier (0.0 = rooted, 0.7 = slowed 30%)
+var _temp_speed_timer: float = 0.0
+
+func apply_temp_speed(modifier: float, duration: float) -> void:
+	_temp_speed_modifier = modifier
+	_temp_speed_timer = duration
+
+func _process_temp_effects(delta: float) -> void:
+	if _temp_speed_timer > 0:
+		_temp_speed_timer -= delta
+		if _temp_speed_timer <= 0:
+			_temp_speed_modifier = 1.0
+
+func get_effective_speed() -> float:
+	return speed * get_stat_modifier() * _temp_speed_modifier
+
 func reset_round_state() -> void:
 	_stat_reduction_count = 0
 	special_meter = 0.0
 	is_blocking = false
 	is_attacking = false
+	_temp_speed_modifier = 1.0
+	_temp_speed_timer = 0.0
 ```
 
 - [ ] **Step 4: Update take_damage() to use stat modifiers**
@@ -300,16 +319,41 @@ func apply_knockback(direction: float, force: float) -> void:
 	velocity.x += direction * force * kb
 ```
 
-- [ ] **Step 4: Add damage_dealt meter build to attack()**
+- [ ] **Step 4: Add damage_dealt meter build and wire into attack()**
 
 Add a signal and meter build when damage is dealt. In `scripts/core/fighter.gd`:
 
 ```gdscript
 signal damage_dealt(amount: float)
+signal special_used()  # Fired when any fighter uses their special
 
 func on_damage_dealt(amount: float) -> void:
 	special_meter = min(special_meter + amount * 0.4, 100.0)
 	special_meter_changed.emit(special_meter)
+```
+
+Update the existing `attack()` method to call `on_damage_dealt()` so the attacker's meter builds from normal punch/kick attacks:
+
+```gdscript
+func attack(type: String, damage: float) -> void:
+	is_attacking = true
+	if anim_player:
+		anim_player.play(type)
+		await anim_player.animation_finished
+	# Build attacker's special meter from damage dealt
+	on_damage_dealt(damage)
+	on_hit_landed()
+	is_attacking = false
+```
+
+Update `use_special()` to emit the signal so other fighters can react (e.g., Ron DeSanctimonious's Parental Advisory):
+
+```gdscript
+func use_special() -> void:
+	attack("special", special_damage)
+	special_meter = 0.0
+	special_meter_changed.emit(special_meter)
+	special_used.emit()
 ```
 
 - [ ] **Step 5: Run tests**
@@ -417,7 +461,13 @@ func ban_input(prefix: String, action: String, duration: float) -> void:
 
 
 func silence_player(prefix: String, duration: float) -> void:
+	# Silence bans attacks, specials, and blocking — NOT movement
 	var now = Time.get_ticks_msec() / 1000.0
+	ban_input(prefix, "punch", duration)
+	ban_input(prefix, "kick", duration)
+	ban_input(prefix, "special", duration)
+	ban_input(prefix, "down", duration)  # Block
+	ban_input(prefix, "taunt", duration)
 	_silences[prefix] = now + duration
 
 
@@ -444,6 +494,18 @@ func get_active_ban_count(prefix: String) -> int:
 		if key.begins_with(prefix):
 			count += 1
 	return count
+
+
+func evict_oldest_ban(prefix: String) -> void:
+	## Remove the ban with the earliest expiry time for the given prefix.
+	var oldest_key = ""
+	var oldest_time = INF
+	for key in _bans:
+		if key.begins_with(prefix) and _bans[key] < oldest_time:
+			oldest_time = _bans[key]
+			oldest_key = key
+	if oldest_key != "":
+		_bans.erase(oldest_key)
 
 
 func clear_all(prefix: String) -> void:
@@ -500,10 +562,8 @@ func handle_input(prefix: String) -> void:
 	if is_attacking:
 		return
 
-	# Check for silence/global ban
-	if input_manager and input_manager.is_input_banned(prefix + "left"):
-		velocity.x = 0
-		return
+	# Check for silence — blocks attacks/specials/blocking, NOT movement
+	# (silence is checked per-action below, not globally here)
 
 	var direction := Input.get_axis(prefix + "left", prefix + "right")
 	velocity.x = direction * get_effective_speed()
@@ -586,6 +646,19 @@ Add to `_physics_process()`:
 # After move_and_slide():
 passive_proc(delta)
 _process_taunt(delta)
+_clamp_to_arena()
+```
+
+Add arena boundary clamping (no ring-outs per spec):
+
+```gdscript
+const ARENA_LEFT: float = 40.0
+const ARENA_RIGHT: float = 1240.0
+
+func _clamp_to_arena() -> void:
+	position.x = clamp(position.x, ARENA_LEFT, ARENA_RIGHT)
+	if position.x == ARENA_LEFT or position.x == ARENA_RIGHT:
+		velocity.x = 0
 ```
 
 Add methods:

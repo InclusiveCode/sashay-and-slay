@@ -489,10 +489,15 @@ func _load_fighters() -> void:
 		add_child(p2_fighter)
 		GameManager.register_fighter(p2_fighter)
 
-	# Set opponent references
+	# Set opponent references and wire cross-fighter signals
 	if p1_fighter and p2_fighter:
 		p1_fighter.opponent = p2_fighter
 		p2_fighter.opponent = p1_fighter
+		# Wire special_used signals for passives like Ron's Parental Advisory
+		if p2_fighter.has_method("_on_opponent_used_special"):
+			p1_fighter.special_used.connect(p2_fighter._on_opponent_used_special)
+		if p1_fighter.has_method("_on_opponent_used_special"):
+			p2_fighter.special_used.connect(p1_fighter._on_opponent_used_special)
 
 
 func _load_stage() -> void:
@@ -544,13 +549,13 @@ func _connect_signals() -> void:
 func _on_fighter_defeated(winner: int) -> void:
 	GameManager.end_round(winner)
 
-	if GameManager.state == GameManager.State.MATCH_END:
+	if GameManager.current_state == GameManager.GameState.MATCH_END:
 		_on_match_end(winner)
 	else:
 		# Next round
 		GameManager.broadcast_round_reset()
 		_connect_signals()  # Reconnect with fresh HP
-		hud.show_announcement("Round %d!" % GameManager.current_round)
+		hud.show_announcement("Round %d!" % GameManager.round_number)
 		GameManager.start_round()
 
 
@@ -671,39 +676,48 @@ git commit -m "feat: add victory screen with catchphrase and arcade completion"
 
 - [ ] **Step 1: Add missing state variables and methods**
 
+NOTE: The existing GameManager uses `current_state`, `GameState`, `round_number`, `p1_wins`, `p2_wins`.
+All new code must use these existing names. Do NOT introduce renamed variables.
+
 Ensure GameManager has all required state:
 
 ```gdscript
-# Add to game_manager.gd:
+# Add to game_manager.gd (using EXISTING variable naming conventions):
 var victory_mode: String = ""
 var victory_winner: String = ""
-var current_round: int = 1
-var p1_round_wins: int = 0
-var p2_round_wins: int = 0
 
+# These ALREADY EXIST — do not redeclare:
+# var round_number: int = 1
+# var p1_wins: int = 0
+# var p2_wins: int = 0
+# const ROUNDS_TO_WIN: int = 2
+# enum GameState { MENU, CHARACTER_SELECT, FIGHTING, ROUND_END, MATCH_END, PAUSED }
+# var current_state: GameState = GameState.MENU
+
+# Replace existing end_round() — change signature from String to int:
 func end_round(winner: int) -> void:
 	if winner == 1:
-		p1_round_wins += 1
+		p1_wins += 1
 	else:
-		p2_round_wins += 1
+		p2_wins += 1
 
-	if p1_round_wins >= ROUNDS_TO_WIN or p2_round_wins >= ROUNDS_TO_WIN:
-		state = State.MATCH_END
+	if p1_wins >= ROUNDS_TO_WIN or p2_wins >= ROUNDS_TO_WIN:
+		current_state = GameState.MATCH_END
 	else:
-		current_round += 1
-		state = State.ROUND_END
+		round_number += 1
+		current_state = GameState.ROUND_END
 
 func start_round() -> void:
-	state = State.FIGHTING
+	current_state = GameState.FIGHTING
 	round_started.emit()
 
 func reset_to_menu() -> void:
-	state = State.MENU
+	current_state = GameState.MENU
 	p1_character = ""
 	p2_character = ""
-	current_round = 1
-	p1_round_wins = 0
-	p2_round_wins = 0
+	round_number = 1
+	p1_wins = 0
+	p2_wins = 0
 	fighters.clear()
 	if input_manager:
 		input_manager.queue_free()

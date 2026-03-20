@@ -756,9 +756,8 @@ func use_special() -> void:
 
 	# "Reclaiming My Thyme" — root opponent + DOT
 	if opponent:
-		# Root opponent for 3 seconds
-		var original_speed = opponent.speed
-		opponent.speed = 0.0
+		# Root opponent for 3 seconds (using temp speed modifier — auto-restores)
+		opponent.apply_temp_speed(0.0, 3.0)
 
 		# DOT: 5 dmg/second for 5 seconds
 		for i in range(5):
@@ -766,10 +765,6 @@ func use_special() -> void:
 				opponent.take_damage(5.0, false)
 				on_damage_dealt(5.0)
 			await get_tree().create_timer(1.0).timeout
-
-		# Restore speed
-		if opponent:
-			opponent.speed = original_speed
 
 	is_attacking = false
 

@@ -80,10 +80,9 @@ func passive_proc(delta: float) -> void:
 		var bannable = ["punch", "kick"]
 		var action = bannable[randi() % bannable.size()]
 
-		# Max 2 bans — handled by InputManager's existing system
+		# Max 2 bans — evict oldest if at cap
 		if input_manager.get_active_ban_count(opp_prefix) >= 2:
-			# Clear oldest ban first (InputManager handles FIFO via expiry)
-			pass
+			input_manager.evict_oldest_ban(opp_prefix)
 		input_manager.ban_input(opp_prefix, action, BAN_INTERVAL)
 
 	# "Parental Advisory" timer
@@ -99,7 +98,12 @@ func take_damage(amount: float, unblockable: bool = false) -> void:
 	super.take_damage(amount, unblockable)
 
 
-func on_opponent_used_special() -> void:
+func _enter_tree() -> void:
+	# Connect to opponent's special_used signal when available
+	if opponent:
+		opponent.special_used.connect(_on_opponent_used_special)
+
+func _on_opponent_used_special() -> void:
 	# Called when opponent uses their special — triggers Parental Advisory
 	_parental_advisory_active = true
 	_parental_advisory_timer = PA_DURATION
@@ -326,14 +330,12 @@ func use_special() -> void:
 		# Wait for zone to grow
 		await get_tree().create_timer(1.0).timeout
 		if dist <= 200.0:
-			# Opponent falls asleep (stunned 2 seconds)
-			var opp_speed = opponent.speed
-			opponent.speed = 0.0
+			# Opponent falls asleep (rooted 2 seconds via temp speed)
+			opponent.apply_temp_speed(0.0, 2.0)
 			await get_tree().create_timer(2.0).timeout
 			# Suitcase slam
 			opponent.take_damage(26.0, false)
 			on_damage_dealt(26.0)
-			opponent.speed = opp_speed
 
 	is_attacking = false
 
@@ -679,11 +681,9 @@ func use_special() -> void:
 
 	# "Hostile Takeover" — stun + electric floor
 	if opponent:
-		# 1 second stun
-		var opp_speed = opponent.speed
-		opponent.speed = 0.0
+		# 1 second stun via temp speed
+		opponent.apply_temp_speed(0.0, 1.0)
 		await get_tree().create_timer(1.0).timeout
-		opponent.speed = opp_speed
 
 	# Electric floor — 2 dmg/sec for 6 seconds
 	var zone = spawn_burning_zone(2.0, 6.0, 800.0)  # Wide zone
@@ -1228,7 +1228,10 @@ func reset_round_state() -> void:
 	ego_meter = 0.0
 	tremendous_mode = false
 	_tremendous_timer = 0.0
-	# Phase 2 and Fake News persist across rounds (they're HP-based, not round-based)
+	# Phase 2 and Fake News are HP-based — reset flags so they re-evaluate
+	# against the new round's full HP (which will be above thresholds)
+	phase_2 = false
+	fake_news_active = false
 	_tweet_timer = 0.0
 	set_secondary_resource(0.0)
 ```
