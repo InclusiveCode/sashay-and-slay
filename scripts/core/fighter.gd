@@ -24,6 +24,10 @@ var is_attacking: bool = false
 var facing_right: bool = true
 var gravity: float = 980.0
 
+# Stat modifier system
+var _stat_reduction_count: int = 0
+var _temp_speed_modifier: float = 1.0
+
 @onready var anim_player: AnimationPlayer = $AnimationPlayer if has_node("AnimationPlayer") else null
 @onready var hitbox: Area2D = $Hitbox if has_node("Hitbox") else null
 @onready var hurtbox: Area2D = $Hurtbox if has_node("Hurtbox") else null
@@ -42,12 +46,37 @@ func _physics_process(delta: float) -> void:
 	move_and_slide()
 
 
+func get_stat_modifier() -> float:
+	return max(1.0 - _stat_reduction_count * 0.1, 0.5)
+
+
+func apply_stat_reduction() -> void:
+	_stat_reduction_count += 1
+
+
+func get_effective_punch() -> float:
+	return punch_damage * get_stat_modifier()
+
+
+func get_effective_kick() -> float:
+	return kick_damage * get_stat_modifier()
+
+
+func get_effective_speed() -> float:
+	return speed * get_stat_modifier() * _temp_speed_modifier
+
+
+func reset_round_state() -> void:
+	_stat_reduction_count = 0
+	_temp_speed_modifier = 1.0
+
+
 func handle_input(prefix: String) -> void:
 	if is_attacking:
 		return
 
 	var direction := Input.get_axis(prefix + "left", prefix + "right")
-	velocity.x = direction * speed
+	velocity.x = direction * get_effective_speed()
 
 	if direction != 0:
 		facing_right = direction > 0
@@ -58,9 +87,9 @@ func handle_input(prefix: String) -> void:
 	is_blocking = Input.is_action_pressed(prefix + "down") and is_on_floor()
 
 	if Input.is_action_just_pressed(prefix + "punch"):
-		attack("punch", punch_damage)
+		attack("punch", get_effective_punch())
 	elif Input.is_action_just_pressed(prefix + "kick"):
-		attack("kick", kick_damage)
+		attack("kick", get_effective_kick())
 	elif Input.is_action_just_pressed(prefix + "special") and special_meter >= 100.0:
 		attack("special", special_damage)
 		special_meter = 0.0
