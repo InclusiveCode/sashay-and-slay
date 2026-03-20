@@ -1,6 +1,7 @@
-[gd_scene load_steps=2 format=3]
+[gd_scene load_steps=3 format=3]
 
 [ext_resource type="Script" path="res://scripts/ui/hud.gd" id="1"]
+[ext_resource type="Script" path="res://scripts/core/fight_manager.gd" id="2"]
 
 [node name="Fight" type="Node2D"]
 
@@ -10,6 +11,9 @@
 position = Vector2(640, 620)
 
 [node name="FloorShape" type="CollisionShape2D" parent="Stage/Floor"]
+
+[node name="FightManager" type="Node" parent="."]
+script = ExtResource("2")
 
 [node name="HUD" type="CanvasLayer" parent="."]
 script = ExtResource("1")
