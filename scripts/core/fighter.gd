@@ -8,6 +8,10 @@ signal special_meter_changed(new_value: float)
 signal defeated()
 signal damage_dealt(amount: float)
 signal special_used()
+signal taunt_started()
+signal taunt_finished()
+signal passive_triggered(passive_name: String)
+signal secondary_resource_changed(new_value: float)
 
 @export var fighter_name: String = "Fighter"
 @export var max_health: float = 100.0
@@ -29,9 +33,29 @@ var gravity: float = 980.0
 # Stat modifier system
 var _stat_reduction_count: int = 0
 var _temp_speed_modifier: float = 1.0
+var _temp_speed_timer: float = 0.0
 
 # Input manager (set externally, e.g., by GameManager)
 var input_manager: InputManager = null
+
+# Opponent reference
+var opponent: Fighter = null
+
+# Hit counter
+var _hit_counter: int = 0
+
+# Taunt system
+var is_taunting: bool = false
+var taunt_duration: float = 1.0
+var _taunt_timer: float = 0.0
+
+# Secondary resource
+var secondary_resource: float = 0.0
+var secondary_resource_max: float = 100.0
+
+# Arena boundaries
+const ARENA_LEFT: float = 40.0
+const ARENA_RIGHT: float = 1240.0
 
 @onready var anim_player: AnimationPlayer = $AnimationPlayer if has_node("AnimationPlayer") else null
 @onready var hitbox: Area2D = $Hitbox if has_node("Hitbox") else null
@@ -48,7 +72,13 @@ func _physics_process(delta: float) -> void:
 
 	var prefix = "p1_" if is_player_one else "p2_"
 	handle_input(prefix)
+
+	passive_proc(delta)
+	_process_taunt(delta)
+	_process_temp_effects(delta)
+
 	move_and_slide()
+	_clamp_to_arena()
 
 
 func get_stat_modifier() -> float:
@@ -74,6 +104,13 @@ func get_effective_speed() -> float:
 func reset_round_state() -> void:
 	_stat_reduction_count = 0
 	_temp_speed_modifier = 1.0
+	_temp_speed_timer = 0.0
+	is_taunting = false
+	_taunt_timer = 0.0
+	_hit_counter = 0
+	secondary_resource = 0.0
+	is_blocking = false
+	is_attacking = false
 
 
 func _is_action_banned(action: String) -> bool:
@@ -87,7 +124,7 @@ func _get_remapped(action: String) -> String:
 
 
 func handle_input(prefix: String) -> void:
-	if is_attacking:
+	if is_attacking or is_taunting:
 		return
 
 	# Movement — never banned by silence
@@ -117,9 +154,10 @@ func handle_input(prefix: String) -> void:
 			attack("kick", get_effective_kick())
 	# Special — check ban
 	if not _is_action_banned(prefix + "special") and Input.is_action_just_pressed(prefix + "special") and special_meter >= 100.0:
-		attack("special", special_damage)
-		special_meter = 0.0
-		special_meter_changed.emit(special_meter)
+		use_special()
+	# Taunt — check ban
+	if not _is_action_banned(prefix + "taunt") and Input.is_action_just_pressed(prefix + "taunt"):
+		start_taunt()
 
 
 func attack(type: String, damage: float) -> void:
@@ -130,6 +168,13 @@ func attack(type: String, damage: float) -> void:
 		anim_player.play(type)
 		await anim_player.animation_finished
 	is_attacking = false
+
+
+func use_special() -> void:
+	attack("special", special_damage)
+	special_meter = 0.0
+	special_meter_changed.emit(special_meter)
+	special_used.emit()
 
 
 func take_damage(amount: float, unblockable: bool = false) -> void:
@@ -164,7 +209,69 @@ func on_damage_dealt(amount: float) -> void:
 
 
 func on_hit_landed() -> void:
+	_hit_counter += 1
+
+
+# --- Passive system (virtual) ---
+
+func passive_proc(_delta: float) -> void:
 	pass
+
+
+# --- Taunt system ---
+
+func start_taunt() -> void:
+	is_taunting = true
+	_taunt_timer = taunt_duration
+	taunt_started.emit()
+	if anim_player and anim_player.has_animation("taunt"):
+		anim_player.play("taunt")
+
+
+func _process_taunt(delta: float) -> void:
+	if not is_taunting:
+		return
+	_taunt_timer -= delta
+	if _taunt_timer <= 0.0:
+		is_taunting = false
+		_taunt_timer = 0.0
+		on_taunt_complete()
+		taunt_finished.emit()
+
+
+func on_taunt_complete() -> void:
+	pass
+
+
+# --- Secondary resource ---
+
+func set_secondary_resource(value: float) -> void:
+	secondary_resource = clamp(value, 0.0, secondary_resource_max)
+	secondary_resource_changed.emit(secondary_resource)
+
+
+# --- Temporary speed effects ---
+
+func apply_temp_speed(modifier: float, duration: float) -> void:
+	_temp_speed_modifier = modifier
+	_temp_speed_timer = duration
+
+
+func _process_temp_effects(delta: float) -> void:
+	if _temp_speed_timer > 0.0:
+		_temp_speed_timer -= delta
+		if _temp_speed_timer <= 0.0:
+			_temp_speed_modifier = 1.0
+			_temp_speed_timer = 0.0
+
+
+# --- Arena clamping ---
+
+func _clamp_to_arena() -> void:
+	if position.x < ARENA_LEFT:
+		position.x = ARENA_LEFT
+	elif position.x > ARENA_RIGHT:
+		position.x = ARENA_RIGHT
 
 
 func get_catchphrase() -> String:
